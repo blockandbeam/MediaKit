@@ -92,7 +92,7 @@ public final class MediaAPI {
 
         long durationMillis = probeDuration(absolute);
         String name = absolute.getFileName().toString();
-        return new Media(UUID.randomUUID(), name, absolute.toUri(), format, durationMillis, MediaState.READY);
+        return new Media(UUID.randomUUID(), name, absolute.toUri(), absolute, format, durationMillis, MediaState.READY);
     }
 
     /**
@@ -150,7 +150,7 @@ public final class MediaAPI {
         }
 
         long durationMillis = probeDuration(destination);
-        return new Media(UUID.randomUUID(), fileNameOf(clean), clean, format, durationMillis, MediaState.READY);
+        return new Media(UUID.randomUUID(), fileNameOf(clean), clean, destination, format, durationMillis, MediaState.READY);
     }
 
     private static boolean isUrl(String source) {

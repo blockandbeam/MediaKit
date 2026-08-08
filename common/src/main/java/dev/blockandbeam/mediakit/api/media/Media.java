@@ -1,6 +1,7 @@
 package dev.blockandbeam.mediakit.api.media;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -9,14 +10,16 @@ public final class Media {
     private final UUID id;
     private final String name;
     private final URI source;
+    private final Path file;
     private final MediaFormat format;
     private final long durationMillis;
     private volatile MediaState state;
 
-    Media(UUID id, String name, URI source, MediaFormat format, long durationMillis, MediaState state) {
+    Media(UUID id, String name, URI source, Path file, MediaFormat format, long durationMillis, MediaState state) {
         this.id = Objects.requireNonNull(id, "id");
         this.name = Objects.requireNonNull(name, "name");
         this.source = Objects.requireNonNull(source, "source");
+        this.file = Objects.requireNonNull(file, "file");
         this.format = Objects.requireNonNull(format, "format");
         this.durationMillis = durationMillis;
         this.state = Objects.requireNonNull(state, "state");
@@ -32,6 +35,11 @@ public final class Media {
 
     public URI source() {
         return source;
+    }
+
+    /** The local file backing this media (a cache copy for remote or resource-pack sources). */
+    public Path file() {
+        return file;
     }
 
     public MediaFormat format() {
