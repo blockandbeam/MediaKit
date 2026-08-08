@@ -23,6 +23,10 @@ subprojects {
         archivesName = "$rootProject.archives_name-$project.name"
     }
 
+    tasks.withType(Javadoc).configureEach {
+        options.addStringOption('Xdoclint:-missing', '-quiet')
+    }
+
     repositories {
         // Add repositories to retrieve artifacts from in here.
         // You should only use this when depending on other mods because
