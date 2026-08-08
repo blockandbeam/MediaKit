@@ -7,7 +7,6 @@ import dev.blockandbeam.mediakit.MediaKit;
 @Mod(MediaKit.MOD_ID)
 public final class MediaKitNeoForge {
     public MediaKitNeoForge() {
-        // Run our common setup.
         MediaKit.init();
     }
 }
