@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -40,10 +41,50 @@ public final class Http {
     private Http() {
     }
 
+    /** The shared HTTP client. */
+    public static HttpClient client() {
+        return CLIENT;
+    }
+
+    /** The MediaKit user agent string. */
+    public static String userAgent() {
+        return USER_AGENT;
+    }
+
     /** Result of a HEAD probe. */
     public record Head(int statusCode, String contentType, String lastModified) {
         public boolean isSuccess() {
             return statusCode >= 200 && statusCode < 300;
+        }
+    }
+
+    /** A plain text response. */
+    public record Text(int status, String body) {
+        public boolean isSuccess() {
+            return status >= 200 && status < 300;
+        }
+    }
+
+    /** Result of following a URL's redirects. */
+    public record Redirect(URI uri, int status) {
+    }
+
+    /** GETs a URL as text with the MediaKit user agent; empty if the request could not be made. */
+    public static Optional<Text> getText(String url) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .header("User-Agent", USER_AGENT)
+                .timeout(TIMEOUT)
+                .GET()
+                .build();
+        try {
+            HttpResponse<String> response = CLIENT.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return Optional.of(new Text(response.statusCode(), response.body()));
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return Optional.empty();
         }
     }
 
@@ -67,12 +108,31 @@ public final class Http {
         }
     }
 
+    /** Follows a URL's redirects, discarding the body; empty if the request could not be made. */
+    public static Optional<Redirect> redirect(URI uri) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .header("User-Agent", USER_AGENT)
+                    .timeout(TIMEOUT)
+                    .GET()
+                    .build();
+            HttpResponse<Void> response = CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
+            return Optional.of(new Redirect(response.uri(), response.statusCode()));
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return Optional.empty();
+        }
+    }
+
     /**
      * Downloads a URL to {@code destination}.
      *
-     * @return the destination on success, empty if the server returned an error
+     * @return the destination on success
+     * @throws IOException if the server returned an error
      */
-    public static Optional<Path> download(URI uri, Path destination) throws IOException {
+    public static Path download(URI uri, Path destination) throws IOException {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .header("User-Agent", USER_AGENT)
                 .timeout(TIMEOUT)
@@ -89,8 +149,8 @@ public final class Http {
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             Files.deleteIfExists(destination);
-            return Optional.empty();
+            throw new IOException("HTTP " + response.statusCode() + " for " + uri);
         }
-        return Optional.of(destination);
+        return destination;
     }
 }

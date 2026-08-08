@@ -12,8 +12,6 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
-import dev.architectury.platform.Platform;
-
 import dev.blockandbeam.mediakit.api.FFmpeg;
 
 /** Plays a loaded {@link Media} on the default audio device. Client-side only. */
@@ -147,8 +145,7 @@ public final class MediaPlayer {
     private Path transcode(Media media) throws MediaException {
         Path source = media.file();
         try {
-            Path dir = Platform.getConfigFolder().resolve("mediakit").resolve("cache").resolve("transcode");
-            Files.createDirectories(dir);
+            Path dir = MediaAPI.transcodeDir();
             String name = source.getFileName().toString();
             int dot = name.lastIndexOf('.');
             String stem = dot > 0 ? name.substring(0, dot) : name;

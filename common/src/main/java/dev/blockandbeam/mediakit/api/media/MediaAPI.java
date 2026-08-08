@@ -31,10 +31,7 @@ public final class MediaAPI {
     private MediaAPI() {
     }
 
-    /**
-     * Loads media from a URL, file path, or resource pack path, guessing the
-     * source type from the string.
-     */
+    /** Loads media from a URL, file path, or resource pack path. */
     public static Media load(String source) throws MediaException {
         String trimmed = source.trim();
         if (isUrl(trimmed)) {
@@ -95,10 +92,7 @@ public final class MediaAPI {
         return new Media(UUID.randomUUID(), name, absolute.toUri(), absolute, format, durationMillis, MediaState.READY);
     }
 
-    /**
-     * Loads a file from a resource pack, e.g. {@code media/song.mp3} (resolved
-     * in this mod's namespace) or {@code pack:media/song.mp3}. Client-side only.
-     */
+    /** Loads a file from a resource pack, e.g. {@code media/song.mp3} or {@code pack:media/song.mp3}. Client-side only. */
     public static Media loadResource(String path) throws MediaException {
         ResourceLocation location = parseLocation(path);
         Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(location);
@@ -117,6 +111,17 @@ public final class MediaAPI {
 
     private static Media loadRemote(URI uri) throws MediaException {
         URI clean = stripTracking(uri);
+        URI source = clean;
+        String name = fileNameOf(clean);
+        long knownDuration = -1;
+
+        Optional<MediaSource> mediaSource = MediaSourceManager.find(clean);
+        if (mediaSource.isPresent()) {
+            MediaSource.ResolvedSource resolved = mediaSource.get().resolve(clean);
+            clean = resolved.stream();
+            name = resolved.name();
+            knownDuration = resolved.durationMillis();
+        }
 
         Http.Head probe = Http.head(clean).orElse(null);
         if (probe != null && !probe.isSuccess()) {
@@ -132,25 +137,22 @@ public final class MediaAPI {
         }
 
         String extension = format == MediaFormat.UNKNOWN ? ".media" : "." + format.name().toLowerCase(Locale.ROOT);
-        Path destination = cacheDir().resolve(hash(clean.toString()) + extension);
+        Path destination = cacheDir().resolve(hash(source.toString()) + extension);
         try {
             Files.createDirectories(destination.getParent());
-            Optional<Path> downloaded = Http.download(clean, destination);
-            if (downloaded.isEmpty()) {
-                throw new MediaException("Download failed for " + hostOf(clean));
-            }
+            Path downloaded = Http.download(clean, destination);
             if (format == MediaFormat.UNKNOWN) {
-                format = MediaFormat.detectMagic(downloaded.get());
+                format = MediaFormat.detectMagic(downloaded);
                 if (format == MediaFormat.UNKNOWN) {
                     throw new MediaException("Unsupported media format: " + fileNameOf(clean));
                 }
             }
         } catch (IOException e) {
-            throw new MediaException("Could not download " + hostOf(clean), e);
+            throw new MediaException("Could not download " + hostOf(clean) + ": " + e.getMessage(), e);
         }
 
-        long durationMillis = probeDuration(destination);
-        return new Media(UUID.randomUUID(), fileNameOf(clean), clean, destination, format, durationMillis, MediaState.READY);
+        long durationMillis = knownDuration >= 0 ? knownDuration : probeDuration(destination);
+        return new Media(UUID.randomUUID(), name, source, destination, format, durationMillis, MediaState.READY);
     }
 
     private static boolean isUrl(String source) {
@@ -164,8 +166,15 @@ public final class MediaAPI {
         return ResourceLocation.fromNamespaceAndPath(MediaKit.MOD_ID, path);
     }
 
-    private static Path cacheDir() {
+    static Path cacheDir() {
         return Platform.getConfigFolder().resolve("mediakit").resolve("cache");
+    }
+
+    /** The transcode directory, creating it if needed. */
+    static Path transcodeDir() throws IOException {
+        Path dir = cacheDir().resolve("transcode");
+        Files.createDirectories(dir);
+        return dir;
     }
 
     private static String hash(String text) {

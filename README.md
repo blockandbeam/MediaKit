@@ -8,6 +8,10 @@
 2. `ffmpeg` on PATH (skip system detection with `-Dmediakit.ffmpeg.detect=false`)
 3. Latest download, stored in `config/mediakit/ffmpeg/` and checked for updates at most once per hour
 
+## SoundCloud
+
+`soundcloud.com` track URLs resolve to a temporary signed stream, then load like any remote audio. The client id is scraped from SoundCloud's site and cached; override it with `-Dmediakit.soundcloud.client-id=...`.
+
 ## Licensing
 
 Copyright (C) 2026 Block & Beam

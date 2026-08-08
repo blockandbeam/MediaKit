@@ -3,7 +3,10 @@ package dev.blockandbeam.mediakit.api.media;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+
+import net.minecraft.network.chat.Component;
 
 /** A handle to a successfully loaded media source. */
 public final class Media {
@@ -61,6 +64,8 @@ public final class Media {
 
     @Override
     public String toString() {
-        return "Media{name='" + name + "', format=" + format + ", state=" + state + '}';
+        Optional<Component> brand = MediaSourceManager.brand(source);
+        String platform = brand.map(Component::getString).map(s -> ", Platform=" + s.toUpperCase()).orElse("");
+        return "Media{name='" + name + "', format=" + format + platform + ", state=" + state + '}';
     }
 }

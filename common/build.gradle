@@ -14,4 +14,7 @@ dependencies {
     // Archive extraction for the FFmpeg downloader.
     implementation "org.apache.commons:commons-compress:$rootProject.commons_compress_version"
     implementation "org.tukaani:xz:$rootProject.xz_version"
+
+    // Gson is bundled with Minecraft; this only pins it for compilation.
+    compileOnly "com.google.code.gson:gson:2.10.1"
 }

@@ -41,30 +41,13 @@ public final class FFmpeg {
     private FFmpeg() {
     }
 
-    /**
-     * Resolves an ffmpeg binary, downloading the latest build if none is found.
-     * Checks the {@code mediakit.ffmpeg} JVM flag, then PATH (unless
-     * {@code mediakit.ffmpeg.detect=false}), then the download.
-     */
+    /** Resolves an ffmpeg binary, downloading the latest build if none is found. */
     public static Path resolve() throws IOException {
-        Path fromFlag = fromFlag();
-        if (fromFlag != null) {
-            return fromFlag;
-        }
-        if (autoDetect()) {
-            Path onPath = onPath();
-            if (onPath != null) {
-                return onPath;
-            }
-        }
-        return download();
+        Path found = find();
+        return found != null ? found : download();
     }
 
-    /**
-     * Auto-detects an ffmpeg binary: the {@code mediakit.ffmpeg} JVM flag, then
-     * PATH (unless {@code mediakit.ffmpeg.detect=false}), then a previous
-     * download. Never downloads.
-     */
+    /** Finds an existing ffmpeg binary (flag, PATH, or a previous download); never downloads. */
     public static Path find() {
         Path fromFlag = fromFlag();
         if (fromFlag != null) {
@@ -100,9 +83,7 @@ public final class FFmpeg {
         Files.deleteIfExists(executable);
         Path archive = dir.resolve(asset.fileName());
         try {
-            if (Http.download(URI.create(BASE_URL + asset.fileName()), archive).isEmpty()) {
-                throw new IOException("Download failed for " + asset.fileName());
-            }
+            Http.download(URI.create(BASE_URL + asset.fileName()), archive);
             extract(archive, dir, asset.executableName());
         } finally {
             Files.deleteIfExists(archive);

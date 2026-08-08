@@ -1,5 +1,6 @@
 package dev.blockandbeam.mediakit.command;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.mojang.brigadier.CommandDispatcher;
@@ -15,6 +16,7 @@ import dev.blockandbeam.mediakit.api.media.Media;
 import dev.blockandbeam.mediakit.api.media.MediaAPI;
 import dev.blockandbeam.mediakit.api.media.MediaException;
 import dev.blockandbeam.mediakit.api.media.MediaPlayer;
+import dev.blockandbeam.mediakit.api.media.MediaSourceManager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -80,7 +82,7 @@ public final class MediaKitClientCommands {
                 Media media = MediaAPI.load(source);
                 chat("Loaded: " + media);
                 MediaPlayer.INSTANCE.play(media, volume, loop, start);
-                chat("Playing: " + media.name());
+                chat(withBrand("Playing: " + media.name(), media));
             } catch (MediaException e) {
                 chat("Failed: " + e.getMessage());
             }
@@ -98,11 +100,24 @@ public final class MediaKitClientCommands {
         return 1;
     }
 
+    /** Appends the source's platform tag, e.g. {@code [SoundCloud]}, to a message. */
+    private static Component withBrand(String text, Media media) {
+        Optional<Component> brand = MediaSourceManager.brand(media.source());
+        if (brand.isEmpty()) {
+            return Component.literal(text);
+        }
+        return Component.literal(text + " [").append(brand.get()).append("]");
+    }
+
     private static void chat(String message) {
+        chat(Component.literal(message));
+    }
+
+    private static void chat(Component message) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             if (client.player != null) {
-                client.player.displayClientMessage(Component.literal(message), false);
+                client.player.displayClientMessage(message, false);
             }
         });
     }
