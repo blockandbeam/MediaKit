@@ -1,6 +1,8 @@
 package dev.blockandbeam.mediakit.api.media;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -9,6 +11,10 @@ import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
+
+import dev.architectury.platform.Platform;
+
+import dev.blockandbeam.mediakit.api.FFmpeg;
 
 /** Plays a loaded {@link Media} on the default audio device. Client-side only. */
 public final class MediaPlayer {
@@ -29,22 +35,25 @@ public final class MediaPlayer {
         play(media, 1.0f, false, 0.0f);
     }
 
-    /**
-     * Starts playing a media handle, stopping anything currently playing.
-     *
-     * @param volume  gain from 0.0 (mute) to 1.0 (full)
-     * @param loop    whether to restart from the beginning when the media ends
-     * @param start   playback start position in seconds
-     */
+    /** Starts playing a media handle with the given volume, loop, and start offset. */
     public void play(Media media, float volume, boolean loop, float start) throws MediaException {
         stop();
-        AudioInputStream first = openPcm(media);
-        SourceDataLine out = openLine(first.getFormat(), volume);
+        PlaybackSource source = openSource(media);
+        SourceDataLine out;
+        try {
+            out = openLine(source.pcm().getFormat(), volume);
+        } catch (MediaException e) {
+            try {
+                source.pcm().close();
+            } catch (IOException ignored) {
+            }
+            throw e;
+        }
         this.line = out;
         this.current = media;
         this.playing = true;
         media.setState(MediaState.PLAYING);
-        this.thread = new Thread(() -> stream(media, first, loop, start, out), "MediaKit Player");
+        this.thread = new Thread(() -> stream(media, source, loop, start, out), "MediaKit Player");
         this.thread.setDaemon(true);
         this.thread.start();
     }
@@ -77,18 +86,19 @@ public final class MediaPlayer {
         return current;
     }
 
+    /** Whether media is currently playing. */
     public boolean isPlaying() {
         return playing;
     }
 
-    private void stream(Media media, AudioInputStream initial, boolean loop, float start, SourceDataLine out) {
+    private void stream(Media media, PlaybackSource source, boolean loop, float start, SourceDataLine out) {
         out.start();
         byte[] buffer = new byte[BUFFER_SIZE];
         try {
-            AudioInputStream next = initial;
+            AudioInputStream next = source.pcm();
             do {
                 if (next == null) {
-                    next = openPcm(media);
+                    next = openPcm(source.playable());
                 }
                 try (AudioInputStream pcm = next) {
                     next = null;
@@ -121,22 +131,53 @@ public final class MediaPlayer {
         }
     }
 
-    private AudioInputStream openPcm(Media media) throws MediaException {
+    private PlaybackSource openSource(Media media) throws MediaException {
         try {
-            AudioInputStream in = AudioSystem.getAudioInputStream(media.file().toFile());
+            return new PlaybackSource(media.file(), openPcm(media.file()));
+        } catch (MediaException e) {
+            if (!(e.getCause() instanceof UnsupportedAudioFileException)) {
+                throw e;
+            }
+            Path playable = transcode(media);
+            return new PlaybackSource(playable, openPcm(playable));
+        }
+    }
+
+    /** Transcodes the media to a cached WAV, reusing an existing transcode when possible. */
+    private Path transcode(Media media) throws MediaException {
+        Path source = media.file();
+        try {
+            Path dir = Platform.getConfigFolder().resolve("mediakit").resolve("cache").resolve("transcode");
+            Files.createDirectories(dir);
+            String name = source.getFileName().toString();
+            int dot = name.lastIndexOf('.');
+            String stem = dot > 0 ? name.substring(0, dot) : name;
+            Path target = dir.resolve(stem + "-" + source.toFile().lastModified() + ".wav");
+            if (!Files.exists(target)) {
+                FFmpeg.transcode(source, target);
+            }
+            return target;
+        } catch (IOException e) {
+            throw new MediaException("Could not transcode " + media.name(), e);
+        }
+    }
+
+    private AudioInputStream openPcm(Path file) throws MediaException {
+        try {
+            AudioInputStream in = AudioSystem.getAudioInputStream(file.toFile());
             AudioFormat base = in.getFormat();
             if (base.getSampleRate() <= 0 || base.getChannels() <= 0) {
                 in.close();
-                throw new MediaException("Unknown audio format: " + media.name());
+                throw new MediaException("Unknown audio format: " + file.getFileName());
             }
             AudioFormat pcm = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
                     base.getSampleRate(), 16, base.getChannels(),
                     base.getChannels() * 2, base.getSampleRate(), false);
             return base.matches(pcm) ? in : AudioSystem.getAudioInputStream(pcm, in);
         } catch (UnsupportedAudioFileException e) {
-            throw new MediaException("Unsupported audio format: " + media.name(), e);
+            throw new MediaException("Unsupported audio format: " + file.getFileName(), e);
         } catch (IOException | IllegalArgumentException e) {
-            throw new MediaException("Could not open " + media.name(), e);
+            throw new MediaException("Could not open " + file.getFileName(), e);
         }
     }
 
@@ -172,5 +213,8 @@ public final class MediaPlayer {
             current = null;
             media.setState(MediaState.ERROR);
         }
+    }
+
+    private record PlaybackSource(Path playable, AudioInputStream pcm) {
     }
 }

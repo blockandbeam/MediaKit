@@ -41,7 +41,7 @@ public final class Http {
     }
 
     /** Result of a HEAD probe. */
-    public record Head(int statusCode, String contentType) {
+    public record Head(int statusCode, String contentType, String lastModified) {
         public boolean isSuccess() {
             return statusCode >= 200 && statusCode < 300;
         }
@@ -57,7 +57,8 @@ public final class Http {
                     .build();
             HttpResponse<Void> response = CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
             String contentType = response.headers().firstValue("Content-Type").orElse("");
-            return Optional.of(new Head(response.statusCode(), contentType));
+            String lastModified = response.headers().firstValue("Last-Modified").orElse(null);
+            return Optional.of(new Head(response.statusCode(), contentType, lastModified));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();

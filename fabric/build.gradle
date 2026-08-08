@@ -35,6 +35,12 @@ dependencies {
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive = false }
     shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
+
+    // Archive extraction for the FFmpeg downloader.
+    implementation "org.apache.commons:commons-compress:$rootProject.commons_compress_version"
+    shadowBundle "org.apache.commons:commons-compress:$rootProject.commons_compress_version"
+    implementation "org.tukaani:xz:$rootProject.xz_version"
+    shadowBundle "org.tukaani:xz:$rootProject.xz_version"
 }
 
 processResources {

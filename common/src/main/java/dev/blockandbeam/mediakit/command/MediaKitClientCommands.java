@@ -28,6 +28,7 @@ public final class MediaKitClientCommands {
     private MediaKitClientCommands() {
     }
 
+    /** Registers the client-side {@code /mediakit} commands. */
     public static void register(CommandDispatcher<ClientCommandSourceStack> dispatcher) {
         dispatcher.register(ClientCommandRegistrationEvent.literal("mediakit")
                 .then(ClientCommandRegistrationEvent.literal("client:load")
