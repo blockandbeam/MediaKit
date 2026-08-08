@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "mediakit",
+  "version": "${version}",
+  "name": "MediaKit",
+  "description": "Create your own cassettes and radio stations!",
+  "authors": [
+    "Block & Beam"
+  ],
+  "contact": {
+    "homepage": "https://github.com/blockandbeam/",
+    "sources": "https://github.com/blockandbeam/mediakit"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/mediakit/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.blockandbeam.mediakit.fabric.MediaKitFabric"
+    ],
+    "client": [
+      "dev.blockandbeam.mediakit.fabric.client.MediaKitFabricClient"
+    ]
+  },
+  "mixins": [
+    "mediakit.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "architectury": ">=13.0.8",
+    "fabric-api": "*"
+  }
+}
