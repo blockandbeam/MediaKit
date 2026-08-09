@@ -16,7 +16,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import dev.architectury.platform.Platform;
+import dev.blockandbeam.mediakit.client.ClientNotifications;
+import dev.blockandbeam.mediakit.client.DownloadConsent;
 
 /**
  * Locates or downloads a yt-dlp binary for the current OS/arch. Resolution
@@ -33,10 +34,21 @@ public final class YtDlp {
     private YtDlp() {
     }
 
+    public static ExternalDependency dependency() {
+        return new ExternalDependency("yt-dlp", "YouTube and other media sources", find(),
+                "https://github.com/yt-dlp/yt-dlp#installation", YtDlp::resolve);
+    }
+
     /** Resolves a yt-dlp binary, downloading the latest release if none is found. */
     public static Path resolve() throws IOException {
         Path found = find();
-        return found != null ? found : download();
+        if (found != null) {
+            ClientNotifications.announce("Using yt-dlp from " + found);
+            return found;
+        }
+        Path downloaded = download();
+        ClientNotifications.announce("Downloaded yt-dlp to " + downloaded);
+        return downloaded;
     }
 
     /** Finds an existing yt-dlp binary (flag, PATH, or a previous download); never downloads. */
@@ -72,6 +84,9 @@ public final class YtDlp {
         Path executable = dir.resolve(executableName());
         if (Files.exists(executable) && runs(executable) && !isStale(executable, asset)) {
             return executable;
+        }
+        if (!DownloadConsent.await()) {
+            throw new IOException("yt-dlp download needs consent; delete config/mediakit/consent.json to re-ask");
         }
         Files.deleteIfExists(executable);
         Http.download(URI.create(BASE_URL + asset), executable);
@@ -210,7 +225,7 @@ public final class YtDlp {
     }
 
     private static Path binDir() {
-        return Platform.getConfigFolder().resolve("mediakit").resolve("ytdlp");
+        return MediaKitPaths.binDir("ytdlp");
     }
 
     private static String executableName() {

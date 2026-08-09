@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import dev.architectury.platform.Platform;
+import dev.blockandbeam.mediakit.client.ClientNotifications;
+import dev.blockandbeam.mediakit.client.DownloadConsent;
 
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -41,10 +42,21 @@ public final class FFmpeg {
     private FFmpeg() {
     }
 
+    public static ExternalDependency dependency() {
+        return new ExternalDependency("FFmpeg", "Media decoding and transcoding", find(),
+                "https://ffmpeg.org/", FFmpeg::resolve);
+    }
+
     /** Resolves an ffmpeg binary, downloading the latest build if none is found. */
     public static Path resolve() throws IOException {
         Path found = find();
-        return found != null ? found : download();
+        if (found != null) {
+            ClientNotifications.announce("Using ffmpeg from " + found);
+            return found;
+        }
+        Path downloaded = download();
+        ClientNotifications.announce("Downloaded ffmpeg to " + downloaded);
+        return downloaded;
     }
 
     /** Finds an existing ffmpeg binary (flag, PATH, or a previous download); never downloads. */
@@ -79,6 +91,9 @@ public final class FFmpeg {
         Path executable = dir.resolve(asset.executableName());
         if (Files.exists(executable) && runs(executable) && !isStale(executable, asset)) {
             return executable;
+        }
+        if (!DownloadConsent.await()) {
+            throw new IOException("ffmpeg download needs consent; delete config/mediakit/consent.json to re-ask");
         }
         Files.deleteIfExists(executable);
         Path archive = dir.resolve(asset.fileName());
@@ -267,7 +282,7 @@ public final class FFmpeg {
     }
 
     private static Path binDir() {
-        return Platform.getConfigFolder().resolve("mediakit").resolve("ffmpeg");
+        return MediaKitPaths.binDir("ffmpeg");
     }
 
     private static String executableName() {

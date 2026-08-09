@@ -18,9 +18,8 @@ import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
-import dev.architectury.platform.Platform;
-
 import dev.blockandbeam.mediakit.api.Http;
+import dev.blockandbeam.mediakit.api.MediaKitPaths;
 import dev.blockandbeam.mediakit.MediaKit;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -151,12 +150,12 @@ public final class MediaAPI {
     }
 
     static Path cacheDir() {
-        return Platform.getConfigFolder().resolve("mediakit").resolve("cache");
+        return MediaKitPaths.cacheDir();
     }
 
     /** The transcode directory, creating it if needed. */
     static Path transcodeDir() throws IOException {
-        Path dir = cacheDir().resolve("transcode");
+        Path dir = MediaKitPaths.cacheDir().resolve("transcode");
         Files.createDirectories(dir);
         return dir;
     }
