@@ -8,6 +8,7 @@ import java.util.Set;
 import net.minecraft.network.chat.Component;
 
 import dev.blockandbeam.mediakit.api.media.source.SoundCloudSource;
+import dev.blockandbeam.mediakit.api.media.source.YouTubeSource;
 
 /** Registry of media sources that resolve URLs to direct streams. */
 public final class MediaSourceManager {
@@ -15,6 +16,7 @@ public final class MediaSourceManager {
 
     static {
         register(new SoundCloudSource());
+        register(new YouTubeSource());
     }
 
     private MediaSourceManager() {

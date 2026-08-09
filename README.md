@@ -2,15 +2,15 @@
 
 ## FFmpeg
 
-`FFmpeg.resolve()` locates an ffmpeg binary, auto-downloading the latest build if none is found:
-
-1. `-Dmediakit.ffmpeg=/path/to/ffmpeg` - explicit path
-2. `ffmpeg` on PATH (skip system detection with `-Dmediakit.ffmpeg.detect=false`)
-3. Latest download, stored in `config/mediakit/ffmpeg/` and checked for updates at most once per hour
+`FFmpeg.resolve()` locates an ffmpeg binary, auto-downloading the latest build if none is found. Set an explicit path with `-Dmediakit.ffmpeg=/path/to/ffmpeg`, or fall back to `ffmpeg` on PATH (skip system detection with `-Dmediakit.ffmpeg.detect=false`); downloads are stored in `config/mediakit/ffmpeg/` and checked for updates at most once per hour.
 
 ## SoundCloud
 
 `soundcloud.com` track URLs resolve to a temporary signed stream, then stream like any remote audio. The client id is scraped from SoundCloud's site and cached; override it with `-Dmediakit.soundcloud.client-id=...`.
+
+## YouTube
+
+`youtube.com` and `youtu.be` video URLs resolve to a direct audio stream via [yt-dlp](https://github.com/yt-dlp/yt-dlp). The binary is located the same way as ffmpeg: set `-Dmediakit.ytdlp=/path/to/yt-dlp` for an explicit path, or use `yt-dlp` on PATH (skip system detection with `-Dmediakit.ytdlp.detect=false`); downloads are stored in `config/mediakit/ytdlp/` and checked for updates at most once per hour.
 
 ## Licensing
 
