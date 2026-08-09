@@ -1,8 +1,12 @@
 package dev.blockandbeam.mediakit.api.media;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -19,10 +23,13 @@ public final class MediaPlayer {
     public static final MediaPlayer INSTANCE = new MediaPlayer();
 
     private static final int BUFFER_SIZE = 4096;
+    private static final AudioFormat STREAM_FORMAT = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+            44100, 16, 2, 4, 44100, false);
 
     private volatile Media current;
     private volatile boolean playing;
     private volatile SourceDataLine line;
+    private volatile PlaybackSource source;
     private Thread thread;
 
     private MediaPlayer() {
@@ -36,22 +43,20 @@ public final class MediaPlayer {
     /** Starts playing a media handle with the given volume, loop, and start offset. */
     public void play(Media media, float volume, boolean loop, float start) throws MediaException {
         stop();
-        PlaybackSource source = openSource(media);
+        PlaybackSource opened = openSource(media);
         SourceDataLine out;
         try {
-            out = openLine(source.pcm().getFormat(), volume);
+            out = openLine(opened.format(), volume);
         } catch (MediaException e) {
-            try {
-                source.pcm().close();
-            } catch (IOException ignored) {
-            }
+            opened.close();
             throw e;
         }
         this.line = out;
+        this.source = opened;
         this.current = media;
         this.playing = true;
         media.setState(MediaState.PLAYING);
-        this.thread = new Thread(() -> stream(media, source, loop, start, out), "MediaKit Player");
+        this.thread = new Thread(() -> stream(media, opened, loop, start, out), "MediaKit Player");
         this.thread.setDaemon(true);
         this.thread.start();
     }
@@ -59,6 +64,11 @@ public final class MediaPlayer {
     /** Stops playback and releases the audio device. */
     public void stop() {
         playing = false;
+        PlaybackSource openSource = source;
+        source = null;
+        if (openSource != null) {
+            openSource.close();
+        }
         SourceDataLine openLine = line;
         if (openLine != null) {
             openLine.close();
@@ -93,17 +103,14 @@ public final class MediaPlayer {
         out.start();
         byte[] buffer = new byte[BUFFER_SIZE];
         try {
-            AudioInputStream next = source.pcm();
             do {
-                if (next == null) {
-                    next = openPcm(source.playable());
-                }
-                try (AudioInputStream pcm = next) {
-                    next = null;
-                    skipTo(pcm, start);
+                try (AudioInputStream pcm = source.openPcm(start)) {
                     int read;
                     while (playing && (read = pcm.read(buffer)) != -1) {
                         out.write(buffer, 0, read);
+                    }
+                    if (source.failed()) {
+                        throw new IOException("Stream ended unexpectedly");
                     }
                 }
             } while (playing && loop);
@@ -112,15 +119,17 @@ public final class MediaPlayer {
             }
         } catch (MediaException | IOException e) {
             fail(media);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             // Line was closed by stop().
             if (playing) {
                 fail(media);
             }
         } finally {
+            source.close();
             out.stop();
             out.close();
             line = null;
+            this.source = null;
         }
         if (playing && current == media) {
             playing = false;
@@ -130,14 +139,19 @@ public final class MediaPlayer {
     }
 
     private PlaybackSource openSource(Media media) throws MediaException {
+        URI stream = media.stream();
+        if (stream != null) {
+            return new StreamPlayback(stream);
+        }
+        LocalPlayback local = new LocalPlayback(media.file());
         try {
-            return new PlaybackSource(media.file(), openPcm(media.file()));
+            local.format();
+            return local;
         } catch (MediaException e) {
             if (!(e.getCause() instanceof UnsupportedAudioFileException)) {
                 throw e;
             }
-            Path playable = transcode(media);
-            return new PlaybackSource(playable, openPcm(playable));
+            return new LocalPlayback(transcode(media));
         }
     }
 
@@ -159,25 +173,6 @@ public final class MediaPlayer {
         }
     }
 
-    private AudioInputStream openPcm(Path file) throws MediaException {
-        try {
-            AudioInputStream in = AudioSystem.getAudioInputStream(file.toFile());
-            AudioFormat base = in.getFormat();
-            if (base.getSampleRate() <= 0 || base.getChannels() <= 0) {
-                in.close();
-                throw new MediaException("Unknown audio format: " + file.getFileName());
-            }
-            AudioFormat pcm = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
-                    base.getSampleRate(), 16, base.getChannels(),
-                    base.getChannels() * 2, base.getSampleRate(), false);
-            return base.matches(pcm) ? in : AudioSystem.getAudioInputStream(pcm, in);
-        } catch (UnsupportedAudioFileException e) {
-            throw new MediaException("Unsupported audio format: " + file.getFileName(), e);
-        } catch (IOException | IllegalArgumentException e) {
-            throw new MediaException("Could not open " + file.getFileName(), e);
-        }
-    }
-
     private SourceDataLine openLine(AudioFormat format, float volume) throws MediaException {
         try {
             SourceDataLine line = AudioSystem.getSourceDataLine(format);
@@ -196,14 +191,6 @@ public final class MediaPlayer {
         }
     }
 
-    private void skipTo(AudioInputStream pcm, float start) throws IOException {
-        if (start > 0.0f) {
-            AudioFormat format = pcm.getFormat();
-            long bytes = Math.round(start * format.getSampleRate() * format.getFrameSize());
-            pcm.skip(bytes);
-        }
-    }
-
     private void fail(Media media) {
         if (playing && current == media) {
             playing = false;
@@ -212,6 +199,139 @@ public final class MediaPlayer {
         }
     }
 
-    private record PlaybackSource(Path playable, AudioInputStream pcm) {
+    /** A source of PCM audio for the output line, reopened once per loop iteration. */
+    private interface PlaybackSource {
+        /** The format of the PCM produced by {@link #openPcm(float)}. */
+        AudioFormat format() throws MediaException;
+
+        /** Opens a fresh audio stream, seeking to {@code start} seconds in. */
+        AudioInputStream openPcm(float start) throws MediaException;
+
+        /** Whether the last {@link #openPcm(float)} stream ended in an error. */
+        default boolean failed() {
+            return false;
+        }
+
+        /** Releases any resources held by this source (e.g. kills a spawned process). */
+        default void close() {
+        }
+    }
+
+    /** Plays a local file, decoding with Java Sound and falling back to a pre-transcoded WAV. */
+    private static final class LocalPlayback implements PlaybackSource {
+        private final Path file;
+
+        LocalPlayback(Path file) {
+            this.file = file;
+        }
+
+        @Override
+        public AudioFormat format() throws MediaException {
+            try (AudioInputStream in = AudioSystem.getAudioInputStream(file.toFile())) {
+                AudioFormat base = in.getFormat();
+                if (base.getSampleRate() <= 0 || base.getChannels() <= 0) {
+                    throw new MediaException("Unknown audio format: " + file.getFileName());
+                }
+                return new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+                        base.getSampleRate(), 16, base.getChannels(),
+                        base.getChannels() * 2, base.getSampleRate(), false);
+            } catch (UnsupportedAudioFileException e) {
+                throw new MediaException("Unsupported audio format: " + file.getFileName(), e);
+            } catch (IOException | IllegalArgumentException e) {
+                throw new MediaException("Could not open " + file.getFileName(), e);
+            }
+        }
+
+        @Override
+        public AudioInputStream openPcm(float start) throws MediaException {
+            AudioInputStream in;
+            try {
+                in = AudioSystem.getAudioInputStream(file.toFile());
+            } catch (UnsupportedAudioFileException e) {
+                throw new MediaException("Unsupported audio format: " + file.getFileName(), e);
+            } catch (IOException | IllegalArgumentException e) {
+                throw new MediaException("Could not open " + file.getFileName(), e);
+            }
+            try {
+                if (start > 0.0f) {
+                    AudioFormat format = in.getFormat();
+                    long bytes = Math.round(start * format.getSampleRate() * format.getFrameSize());
+                    in.skip(bytes);
+                }
+            } catch (IOException e) {
+                try {
+                    in.close();
+                } catch (IOException ignored) {
+                    e.addSuppressed(ignored);
+                }
+                throw new MediaException("Could not seek in " + file.getFileName(), e);
+            }
+            return in;
+        }
+    }
+
+    /**
+     * Streams a remote URL by piping ffmpeg's raw PCM output to the audio line,
+     * so playback starts without downloading the whole file.
+     */
+    private static final class StreamPlayback implements PlaybackSource {
+        private final URI stream;
+        private volatile Process process;
+
+        StreamPlayback(URI stream) {
+            this.stream = stream;
+        }
+
+        @Override
+        public AudioFormat format() {
+            return STREAM_FORMAT;
+        }
+
+        @Override
+        public AudioInputStream openPcm(float start) throws MediaException {
+            try {
+                List<String> args = new ArrayList<>(List.of(
+                        FFmpeg.resolve().toString(), "-nostdin", "-hide_banner", "-loglevel", "error"));
+                if (start > 0.0f) {
+                    args.add("-ss");
+                    args.add(String.valueOf(start));
+                }
+                args.addAll(List.of("-i", stream.toString(), "-vn", "-ac", "2", "-ar", "44100",
+                        "-c:a", "pcm_s16le", "-f", "s16le", "-"));
+                Process proc = new ProcessBuilder(args)
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+                this.process = proc;
+                return new AudioInputStream(proc.getInputStream(), STREAM_FORMAT, AudioSystem.NOT_SPECIFIED);
+            } catch (IOException e) {
+                throw new MediaException("Could not start ffmpeg for " + stream, e);
+            }
+        }
+
+        @Override
+        public boolean failed() {
+            Process proc = process;
+            if (proc == null) {
+                return false;
+            }
+            // Wait briefly so a just-exited process is reaped before checking the
+            // exit status; isAlive() can otherwise still report true in the window
+            // between the process dying and the JVM observing the exit.
+            try {
+                proc.waitFor(500, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return !proc.isAlive() && proc.exitValue() != 0;
+        }
+
+        @Override
+        public void close() {
+            Process proc = process;
+            if (proc != null) {
+                proc.destroy();
+                process = null;
+            }
+        }
     }
 }

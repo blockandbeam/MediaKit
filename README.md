@@ -10,7 +10,7 @@
 
 ## SoundCloud
 
-`soundcloud.com` track URLs resolve to a temporary signed stream, then load like any remote audio. The client id is scraped from SoundCloud's site and cached; override it with `-Dmediakit.soundcloud.client-id=...`.
+`soundcloud.com` track URLs resolve to a temporary signed stream, then stream like any remote audio. The client id is scraped from SoundCloud's site and cached; override it with `-Dmediakit.soundcloud.client-id=...`.
 
 ## Licensing
 

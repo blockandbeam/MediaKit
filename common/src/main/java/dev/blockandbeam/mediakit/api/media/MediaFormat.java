@@ -17,7 +17,7 @@ public enum MediaFormat {
     MP3("audio/mpeg", "audio/mp3", "audio/x-mpeg"),
     AAC("audio/aac", "audio/mp4", "audio/x-m4a"),
     MP4("video/mp4"),
-    WEBM("video/webm"),
+    WEBM("video/webm", "audio/webm"),
     MKV("video/x-matroska"),
     MOV("video/quicktime"),
     AVI("video/x-msvideo", "video/avi"),

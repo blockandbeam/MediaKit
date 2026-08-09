@@ -14,15 +14,29 @@ public final class Media {
     private final String name;
     private final URI source;
     private final Path file;
+    private final URI stream;
     private final MediaFormat format;
     private final long durationMillis;
     private volatile MediaState state;
 
     Media(UUID id, String name, URI source, Path file, MediaFormat format, long durationMillis, MediaState state) {
+        this(id, name, source, file, null, format, durationMillis, state);
+    }
+
+    Media(UUID id, String name, URI source, URI stream, MediaFormat format, long durationMillis, MediaState state) {
+        this(id, name, source, null, stream, format, durationMillis, state);
+    }
+
+    private Media(UUID id, String name, URI source, Path file, URI stream, MediaFormat format,
+            long durationMillis, MediaState state) {
         this.id = Objects.requireNonNull(id, "id");
         this.name = Objects.requireNonNull(name, "name");
         this.source = Objects.requireNonNull(source, "source");
-        this.file = Objects.requireNonNull(file, "file");
+        if (file == null && stream == null) {
+            throw new IllegalArgumentException("Media needs a file or a stream");
+        }
+        this.file = file;
+        this.stream = stream;
         this.format = Objects.requireNonNull(format, "format");
         this.durationMillis = durationMillis;
         this.state = Objects.requireNonNull(state, "state");
@@ -40,9 +54,14 @@ public final class Media {
         return source;
     }
 
-    /** The local file backing this media (a cache copy for remote or resource-pack sources). */
+    /** The local file backing this media, or {@code null} for streamed media. */
     public Path file() {
         return file;
+    }
+
+    /** The remote stream this media plays from, or {@code null} for local media. */
+    public URI stream() {
+        return stream;
     }
 
     public MediaFormat format() {

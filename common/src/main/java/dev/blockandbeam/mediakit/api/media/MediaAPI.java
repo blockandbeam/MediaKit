@@ -111,48 +111,32 @@ public final class MediaAPI {
 
     private static Media loadRemote(URI uri) throws MediaException {
         URI clean = stripTracking(uri);
-        URI source = clean;
+        URI stream = clean;
         String name = fileNameOf(clean);
-        long knownDuration = -1;
+        long durationMillis = -1;
 
         Optional<MediaSource> mediaSource = MediaSourceManager.find(clean);
         if (mediaSource.isPresent()) {
             MediaSource.ResolvedSource resolved = mediaSource.get().resolve(clean);
-            clean = resolved.stream();
+            stream = resolved.stream();
             name = resolved.name();
-            knownDuration = resolved.durationMillis();
-        }
-
-        Http.Head probe = Http.head(clean).orElse(null);
-        if (probe != null && !probe.isSuccess()) {
-            throw new MediaException("Server returned " + probe.statusCode() + " for " + hostOf(clean));
+            durationMillis = resolved.durationMillis();
         }
 
         MediaFormat format = MediaFormat.UNKNOWN;
+        Http.Head probe = Http.head(stream).orElse(null);
         if (probe != null) {
+            if (!probe.isSuccess()) {
+                throw new MediaException("Server returned " + probe.statusCode() + " for " + hostOf(stream));
+            }
             format = MediaFormat.fromContentType(probe.contentType());
         }
-        if (format == MediaFormat.UNKNOWN && clean.getPath() != null) {
-            format = MediaFormat.fromFileName(clean.getPath());
+        if (format == MediaFormat.UNKNOWN && stream.getPath() != null) {
+            format = MediaFormat.fromFileName(stream.getPath());
         }
 
-        String extension = format == MediaFormat.UNKNOWN ? ".media" : "." + format.name().toLowerCase(Locale.ROOT);
-        Path destination = cacheDir().resolve(hash(source.toString()) + extension);
-        try {
-            Files.createDirectories(destination.getParent());
-            Path downloaded = Http.download(clean, destination);
-            if (format == MediaFormat.UNKNOWN) {
-                format = MediaFormat.detectMagic(downloaded);
-                if (format == MediaFormat.UNKNOWN) {
-                    throw new MediaException("Unsupported media format: " + fileNameOf(clean));
-                }
-            }
-        } catch (IOException e) {
-            throw new MediaException("Could not download " + hostOf(clean) + ": " + e.getMessage(), e);
-        }
-
-        long durationMillis = knownDuration >= 0 ? knownDuration : probeDuration(destination);
-        return new Media(UUID.randomUUID(), name, source, destination, format, durationMillis, MediaState.READY);
+        // Remote media is streamed on play instead of being downloaded in full.
+        return new Media(UUID.randomUUID(), name, clean, stream, format, durationMillis, MediaState.READY);
     }
 
     private static boolean isUrl(String source) {
