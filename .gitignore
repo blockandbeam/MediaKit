@@ -24,3 +24,6 @@ logs/
 
 # Minecraft
 run/
+
+# Local environment (secrets)
+.env
